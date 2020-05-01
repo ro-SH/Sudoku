@@ -1,14 +1,27 @@
 import pygame
+import random
 
 WIDTH = 435
 HEIGHT = 595
 DISPLAY = (WIDTH, HEIGHT)
 
+VERTICAL_OFFSET = 95
+HORIZONTAL_OFFSET = 15
+
+LINE_WIDTH = 2
 CELL_WIDTH = 45
 BOARD_SIZE = 9
 
 MENU_BG_COLOR = (255, 255, 255)
 GAME_BG_COLOR = (255, 255, 255)
+MENU_BUTTON_COLOR = (255, 255, 255)
+MENU_EXTRA_BUTTON_COLOR = (44, 41, 255)
+
+OVER_COLOR = (245, 245, 245)
+EXTRA_OVER_COLOR = (152, 150, 255)
+
+TITLE_FONT = 'candara'
+TITLE_COLOR = (0, 0, 0)
 
 MAIN_LINES_COLOR = (0, 0, 0)
 EXTRA_LINES_COLOR = (153, 153, 153)
@@ -16,11 +29,14 @@ EXTRA_LINES_COLOR = (153, 153, 153)
 GUESSED_COLOR = (40, 40, 66)
 
 DIGITS_COLOR = (0, 0, 0)
-CLICKED_COLOR = (128, 126, 230)
-OUTLINE_COLOR = (186, 186, 186)
-EQUAL_COLOR = (140, 140, 140)
-DIGITS_FONT = 'comicsans'
+CLICKED_COLOR = (152, 150, 255)
+OUTLINE_COLOR = (210, 210, 210)
+EQUAL_COLOR = (160, 160, 160)
+DIGITS_FONT = 'candara'
 DIGITS_FONT_SIZE = 40
+ADDITIONAL_TEXT_FONT_SIZE = 20
+
+MAX_MISTAKES = 3
 
 
 class Button:
@@ -76,8 +92,18 @@ class SudokuGame:
         self.window = pygame.display.set_mode(DISPLAY)
         pygame.display.set_caption('Sudoku')
 
-        self.playing = True
+        self.logo = pygame.image.load('img/logo.png')
 
+        self.playing = False
+
+
+
+        self.new_game_button = Button(WIDTH // 4, HEIGHT * 2 // 3, WIDTH // 2,
+                                      HEIGHT // 8, MENU_BUTTON_COLOR, MENU_EXTRA_BUTTON_COLOR,
+                                      "New Game", MENU_EXTRA_BUTTON_COLOR, DIGITS_FONT, 30
+        )
+        self.menu_title_font = pygame.font.SysFont(TITLE_FONT, 50)
+        self.menu_title = self.menu_title_font.render("Sudoku Game", 1, TITLE_COLOR)
         self.board = [
             [0, 0, 0, 9, 0, 0, 3, 0, 0],
             [0, 0, 0, 1, 0, 5, 4, 0, 9],
@@ -102,7 +128,7 @@ class SudokuGame:
             [4, 8, 2, 7, 5, 3, 1, 9, 6]
         ]
 
-        self.buttons_board = [[Button(17 + CELL_WIDTH * j, 97 + CELL_WIDTH * i, CELL_WIDTH - 2, CELL_WIDTH - 2, GAME_BG_COLOR)
+        self.buttons_board = [[Button(HORIZONTAL_OFFSET + LINE_WIDTH + CELL_WIDTH * j, VERTICAL_OFFSET + LINE_WIDTH + CELL_WIDTH * i, CELL_WIDTH - LINE_WIDTH, CELL_WIDTH - LINE_WIDTH, GAME_BG_COLOR)
                                for j in range(BOARD_SIZE)]
                               for i in range(BOARD_SIZE)
         ]
@@ -112,34 +138,209 @@ class SudokuGame:
                 if self.board[i][j]:
                     self.buttons_board[i][j].text = str(self.board[i][j])
 
+        self.solve_button = Button(WIDTH - HORIZONTAL_OFFSET - CELL_WIDTH * 3,
+                                   HEIGHT - VERTICAL_OFFSET + HORIZONTAL_OFFSET,
+                                   CELL_WIDTH * 3 + LINE_WIDTH,
+                                   VERTICAL_OFFSET - 2 * HORIZONTAL_OFFSET, CLICKED_COLOR,
+                                   None, "Solve", GAME_BG_COLOR,
+                                   DIGITS_FONT, ADDITIONAL_TEXT_FONT_SIZE
+        )
+
+        self.additional_text_font = pygame.font.SysFont(DIGITS_FONT, ADDITIONAL_TEXT_FONT_SIZE)
         self.clicked = (-1, -1)
         self.mistakes = 0
 
+        self.func = {
+            0: self.transpose,
+            1: self.swap_rows_in_area,
+            2: self.swap_cols_in_area,
+            3: self.swap_horizontal_areas,
+            4: self.swap_vertical_areas
+        }
+
+    def create_board(self):
+        self.initialize()
+        for i in range(10):
+            self.func[random.randint(0, 4)]()
+
+    def initialize(self):
+        for i in range(BOARD_SIZE):
+            for j in range(BOARD_SIZE):
+                if not i % 3:
+                    self.board[i][j] = (i // 3 + 1 + j)
+                else:
+                    try:
+                        self.board[i][j] = self.board[i - 1][j + 3]
+                    except IndexError:
+                        self.board[i][j] = self.board[i - 1][j - 6]
+                if self.board[i][j] > 9:
+                    self.board[i][j] -= 9
+
+    def transpose(self):
+        self.board = list(map(list, zip(*self.board)))
+
+    def swap_rows_in_area(self):
+        first, second = self.find_random_lines()
+        for j in range(BOARD_SIZE):
+            self.board[first][j], self.board[second][j] = self.board[second][j], self.board[first][j]
+
+    def swap_cols_in_area(self):
+        first, second = self.find_random_lines()
+        for i in range(BOARD_SIZE):
+            self.board[i][first], self.board[i][second] = self.board[i][second], self.board[i][first]
+
+    def swap_horizontal_areas(self):
+        first, second = self.find_random_areas()
+        for i in range(3):
+            for j in range(BOARD_SIZE):
+                self.board[first * 3 + i][j], self.board[second * 3 + i][j] = self.board[second * 3 + i][j], self.board[first * 3 + i][j]
+
+    def swap_vertical_areas(self):
+        first, second = self.find_random_areas()
+        for i in range(BOARD_SIZE):
+            for j in range(3):
+                self.board[i][first * 3 + j], self.board[i][second * 3 + j] = self.board[i][second * 3 + j], self.board[i][first * 3 + j]
+
+    def find_random_areas(self):
+        first = random.randint(0, 2)
+        second = None
+        while second is None or second == first:
+            second = random.randint(0, 2)
+        return (first, second)
+
+    def find_random_lines(self):
+        area = random.randint(0, 2)
+        first = random.randint(area * 3, area * 3 + 2)
+        second = None
+        while second is None or second == first:
+            second = random.randint(area * 3, area * 3 + 2)
+        return (first, second)
+
+    def solve(self):
+        pos = self.find_next()
+        if pos is None:
+            return True
+        else:
+            row, col = pos[0], pos[1]
+            for value in range(1, 10):
+                if self.isValid(value, row, col):
+                    self.board[row][col] = value
+                    self.buttons_board[row][col].text = str(value)
+                    self.buttons_board[row][col].draw(self.window)
+                    pygame.display.update()
+
+                    if self.solve():
+                        return True
+
+                    self.board[row][col] = 0
+
+        return False
+
+    def find_next(self):
+        for i in range(BOARD_SIZE):
+            for j in range(BOARD_SIZE):
+                if self.board[i][j] == 0:
+                    return (i, j)
+        return None
+
+    def isValid(self, value, row, col):
+        for i in range(BOARD_SIZE):
+            if self.board[row][i] == value or self.board[i][col] == value:
+                return False
+
+        left_border = 3 * (row // 3)
+        up_border = 3 * (col // 3)
+        for i in range(left_border, left_border + 3):
+            for j in range(up_border, up_border + 3):
+                if self.board[i][j] == value:
+                    return False
+        return True
+
+    def change_highlighting(self, pos=(-1, -1)):
+        if not self.clicked == (-1, -1):
+            for i in range(BOARD_SIZE):
+                for j in range(BOARD_SIZE):
+                    self.buttons_board[i][j].color = GAME_BG_COLOR
+        self.clicked = (pos[0], pos[1])
+        if not self.clicked == (-1, -1):
+            for i in range(BOARD_SIZE):
+                self.buttons_board[self.clicked[0]][i].color = OUTLINE_COLOR
+                self.buttons_board[i][self.clicked[1]].color = OUTLINE_COLOR
+            for i in range(3 * (self.clicked[0] // 3), 3 * (self.clicked[0] // 3) + 3):
+                for j in range(3 * (self.clicked[1] // 3), 3 * (self.clicked[1] // 3) + 3):
+                    self.buttons_board[i][j].color = OUTLINE_COLOR
+            if self.buttons_board[self.clicked[0]][self.clicked[1]].text:
+                for i in range(BOARD_SIZE):
+                    for j in range(BOARD_SIZE):
+                        if self.buttons_board[i][j].text == self.buttons_board[self.clicked[0]][self.clicked[1]].text:
+                            self.buttons_board[i][j].color = EQUAL_COLOR
+            self.buttons_board[self.clicked[0]][self.clicked[1]].color = CLICKED_COLOR
 
     def draw_menu_window(self):
         self.window.fill(MENU_BG_COLOR)
 
+        self.window.blit(self.logo, (WIDTH // 2 - self.logo.get_width() // 2, HEIGHT // 9))
+
+        self.window.blit(self.menu_title, (WIDTH // 2 - self.menu_title.get_width() // 2,
+                                           HEIGHT // 2 - self.menu_title.get_height() // 2))
+        self.new_game_button.draw(self.window)
+
         pygame.display.update()
 
-    def draw_game_window(self):
-        self.window.fill(GAME_BG_COLOR)
-
+    def draw_cells(self):
         for i in range(BOARD_SIZE):
             for j in range(BOARD_SIZE):
                 self.buttons_board[i][j].draw(self.window)
 
+    def draw_board(self):
         for i in range(BOARD_SIZE + 1):
             if i % 3:
-                pygame.draw.line(self.window, EXTRA_LINES_COLOR, [15 + 45 * i, 95], [15 + 45 * i, HEIGHT - 95], 2)
-        for i in range(BOARD_SIZE + 1):
-            if i % 3:
-                pygame.draw.line(self.window, EXTRA_LINES_COLOR, [15, 95 + 45 * i], [WIDTH - 15, 95 + 45 * i], 2)
-        for i in range(0, BOARD_SIZE + 1, 3):
-            pygame.draw.line(self.window, MAIN_LINES_COLOR, [15 + 45 * i, 95], [15 + 45 * i, HEIGHT - 95], 2)
-        for i in range(0, BOARD_SIZE + 1, 3):
-            pygame.draw.line(self.window, MAIN_LINES_COLOR, [15, 95 + 45 * i], [WIDTH - 15, 95 + 45 * i], 2)
+                pygame.draw.line(self.window, EXTRA_LINES_COLOR,
+                                 [HORIZONTAL_OFFSET + CELL_WIDTH * i, VERTICAL_OFFSET],
+                                 [HORIZONTAL_OFFSET + CELL_WIDTH * i, HEIGHT - VERTICAL_OFFSET],
+                                 LINE_WIDTH)
 
+        for i in range(BOARD_SIZE + 1):
+            if i % 3:
+                pygame.draw.line(self.window, EXTRA_LINES_COLOR,
+                                 [HORIZONTAL_OFFSET, VERTICAL_OFFSET + CELL_WIDTH * i],
+                                 [WIDTH - HORIZONTAL_OFFSET, VERTICAL_OFFSET + CELL_WIDTH * i],
+                                 LINE_WIDTH)
+
+        for i in range(0, BOARD_SIZE + 1, 3):
+            pygame.draw.line(self.window, MAIN_LINES_COLOR,
+                             [HORIZONTAL_OFFSET + CELL_WIDTH * i, VERTICAL_OFFSET],
+                             [HORIZONTAL_OFFSET + CELL_WIDTH * i, HEIGHT - VERTICAL_OFFSET],
+                             LINE_WIDTH)
+
+        for i in range(0, BOARD_SIZE + 1, 3):
+            pygame.draw.line(self.window, MAIN_LINES_COLOR,
+                             [HORIZONTAL_OFFSET, VERTICAL_OFFSET + CELL_WIDTH * i],
+                             [WIDTH - HORIZONTAL_OFFSET, VERTICAL_OFFSET + CELL_WIDTH * i],
+                             LINE_WIDTH)
+
+    def draw_game_window(self):
+        self.window.fill(GAME_BG_COLOR)
+
+        mistakes_text = self.additional_text_font.render(f"Mistakes: {self.mistakes}/{MAX_MISTAKES}",
+                                                         0, EXTRA_LINES_COLOR)
+        self.window.blit(mistakes_text, (WIDTH // 2 + CELL_WIDTH, VERTICAL_OFFSET - ADDITIONAL_TEXT_FONT_SIZE))
+
+        self.draw_cells()
+        self.solve_button.draw(self.window)
+        self.draw_board()
         pygame.display.update()
+
+    def start_new_game(self):
+        self.playing = 1
+        self.mistakes = 0
+        self.clicked = (-1, -1)
+        # self.create_board()
+
+        for i in range(BOARD_SIZE):
+            for j in range(BOARD_SIZE):
+                if self.board[i][j]:
+                    self.buttons_board[i][j].text = str(self.board[i][j])
 
     def start(self):
         running = True
@@ -153,42 +354,47 @@ class SudokuGame:
 
                 if self.playing:
                     if event.type == pygame.MOUSEBUTTONDOWN:
-                        for row_index, row in enumerate(self.buttons_board):
-                            for col_index, button in enumerate(row):
-                                if button.is_over(pos):
-                                    if not self.clicked == (-1, -1):
-                                        for i in range(BOARD_SIZE):
-                                            for j in range(BOARD_SIZE):
-                                                self.buttons_board[i][j].color = GAME_BG_COLOR
-                                    self.clicked = (row_index, col_index)
-                                    for i in range(BOARD_SIZE):
-                                        self.buttons_board[self.clicked[0]][i].color = OUTLINE_COLOR
-                                        self.buttons_board[i][self.clicked[1]].color = OUTLINE_COLOR
-                                    for i in range(3 * (self.clicked[0] // 3), 3 * (self.clicked[0] // 3) + 3):
-                                        for j in range(3 * (self.clicked[1] // 3), 3 * (self.clicked[1] // 3) + 3):
-                                            self.buttons_board[i][j].color = OUTLINE_COLOR
-                                    if button.text:
-                                        for i in range(BOARD_SIZE):
-                                            for j in range(BOARD_SIZE):
-                                                if self.buttons_board[i][j].text == button.text:
-                                                    self.buttons_board[i][j].color = EQUAL_COLOR
-                                    button.color = CLICKED_COLOR
+                        for row in range(BOARD_SIZE):
+                            for col in range(BOARD_SIZE):
+                                if self.buttons_board[row][col].is_over(pos):
+                                    self.change_highlighting((row, col))
+                                    if self.find_next() is None:
+                                        # WON
+                                        pass
+                        if self.solve_button.is_over(pos):
+                            self.solve()
+                            self.change_highlighting()
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key in self.keys_dict:
+                            if self.keys_dict[event.key] == self.correct_board[self.clicked[0]][self.clicked[1]]:
+                                self.buttons_board[self.clicked[0]][self.clicked[1]].text = str(self.keys_dict[event.key])
+                                self.buttons_board[self.clicked[0]][self.clicked[1]].text_color = GUESSED_COLOR
+                            else:
+                                self.mistakes += 1
+                                if self.mistakes == MAX_MISTAKES:
+                                    # LOSE
+                                    self.playing = False
+                        elif event.key == pygame.K_LEFT and self.clicked[1] > 0:
+                            self.change_highlighting((self.clicked[0], self.clicked[1] - 1))
+                        elif event.key == pygame.K_RIGHT and -1 < self.clicked[1] < 8:
+                            self.change_highlighting((self.clicked[0], self.clicked[1] + 1))
+                        elif event.key == pygame.K_UP and self.clicked[0] > 0:
+                            self.change_highlighting((self.clicked[0] - 1, self.clicked[1]))
+                        elif event.key == pygame.K_DOWN and -1 < self.clicked[0] < 8:
+                            self.change_highlighting((self.clicked[0] + 1, self.clicked[1]))
                 else:
-                    pass
-
-            keys = pygame.key.get_pressed()
-            if self.playing:
-                for key in self.keys_dict:
-                    if keys[key]:
-                        if self.keys_dict[key] == self.correct_board[self.clicked[0]][self.clicked[1]]:
-                            self.buttons_board[self.clicked[0]][self.clicked[1]].text = str(self.keys_dict[key])
-                            self.buttons_board[self.clicked[0]][self.clicked[1]].text_color = GUESSED_COLOR
+                    if event.type == pygame.MOUSEMOTION:
+                        if self.new_game_button.is_over(pos):
+                            self.new_game_button.color = OVER_COLOR
+                            self.new_game_button.text_color = EXTRA_OVER_COLOR
+                            self.new_game_button.outline = EXTRA_OVER_COLOR
                         else:
-                            self.mistakes += 1
-                            if self.mistakes == 3:
-                                # LOSE
-                                pass
-
+                            self.new_game_button.color = MENU_BUTTON_COLOR
+                            self.new_game_button.text_color = MENU_EXTRA_BUTTON_COLOR
+                            self.new_game_button.outline = MENU_EXTRA_BUTTON_COLOR
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        if self.new_game_button.is_over(pos):
+                            self.start_new_game()
 
             if self.playing:
                 self.draw_game_window()
@@ -266,5 +472,4 @@ if __name__ == '__main__':
 #     [0, 8, 0, 7, 0, 3, 1, 0, 0]
 # ]
 
-# solve(board)
 # print_board(board)
