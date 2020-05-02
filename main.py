@@ -102,19 +102,15 @@ class SudokuGame:
         self.window = pygame.display.set_mode(DISPLAY)
         pygame.display.set_caption('Sudoku')
 
-        self.logo = pygame.image.load('img/logo.png')
+        self.logo = pygame.image.load('img/sudoku_logo.png')
+        self.icon = pygame.image.load('icons/sudoku_icon.ico')
+        pygame.display.set_icon(self.icon)
 
         self.menu_title_font = pygame.font.SysFont(TITLE_FONT, 50)
         self.menu_title = self.menu_title_font.render("Sudoku Game", 1, TITLE_COLOR)
 
         self.playing = False
         self.choosing_diffculty = False
-
-
-        # self.new_game_button = Button(WIDTH // 4, HEIGHT * 2 // 3, WIDTH // 2,
-        #                               HEIGHT // 8, MENU_BUTTON_COLOR, MENU_EXTRA_BUTTON_COLOR,
-        #                               "New Game", MENU_EXTRA_BUTTON_COLOR, DIGITS_FONT, 30
-        # )
 
         self.menu_buttons = [Button(WIDTH // 4, HEIGHT - (HEIGHT - HEIGHT // 2 - self.menu_title.get_height() // 2) // 2 - HORIZONTAL_OFFSET // 2 - HEIGHT // 8 + i * (HEIGHT // 8 + HORIZONTAL_OFFSET), WIDTH // 2,
                                     HEIGHT // 8, MENU_BUTTON_COLOR, MENU_EXTRA_BUTTON_COLOR,
@@ -197,7 +193,7 @@ class SudokuGame:
 
         open_cells = BOARD_SIZE * BOARD_SIZE - random.randint(DIFFICULTY_CELLS[difficulty][0], DIFFICULTY_CELLS[difficulty][1])
         count = 0
-        while count < open_cells and self.solve(deepcopy(temp_board), False):
+        while count < open_cells:
             pos = (random.randint(0, BOARD_SIZE - 1), random.randint(0, BOARD_SIZE - 1))
             if temp_board[pos[0]][pos[1]]:
                 temp_board[pos[0]][pos[1]] = 0
