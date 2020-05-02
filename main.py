@@ -1,5 +1,6 @@
 import pygame
 import random
+from copy import deepcopy
 
 WIDTH = 435
 HEIGHT = 595
@@ -16,6 +17,8 @@ MENU_BG_COLOR = (255, 255, 255)
 GAME_BG_COLOR = (255, 255, 255)
 MENU_BUTTON_COLOR = (255, 255, 255)
 MENU_EXTRA_BUTTON_COLOR = (44, 41, 255)
+
+MENU_BUTTON_TEXT = ('Continue', 'New Game')
 
 OVER_COLOR = (245, 245, 245)
 EXTRA_OVER_COLOR = (152, 150, 255)
@@ -37,6 +40,13 @@ DIGITS_FONT_SIZE = 40
 ADDITIONAL_TEXT_FONT_SIZE = 20
 
 MAX_MISTAKES = 3
+
+DIFFICULTIES = ('Easy', 'Medium', 'Hard')
+DIFFICULTY_CELLS = {
+    'Easy': (30, 35),
+    'Medium': (25, 29),
+    'Hard': (20, 24)
+}
 
 
 class Button:
@@ -94,16 +104,28 @@ class SudokuGame:
 
         self.logo = pygame.image.load('img/logo.png')
 
-        self.playing = False
-
-
-
-        self.new_game_button = Button(WIDTH // 4, HEIGHT * 2 // 3, WIDTH // 2,
-                                      HEIGHT // 8, MENU_BUTTON_COLOR, MENU_EXTRA_BUTTON_COLOR,
-                                      "New Game", MENU_EXTRA_BUTTON_COLOR, DIGITS_FONT, 30
-        )
         self.menu_title_font = pygame.font.SysFont(TITLE_FONT, 50)
         self.menu_title = self.menu_title_font.render("Sudoku Game", 1, TITLE_COLOR)
+
+        self.playing = False
+        self.choosing_diffculty = False
+
+
+        # self.new_game_button = Button(WIDTH // 4, HEIGHT * 2 // 3, WIDTH // 2,
+        #                               HEIGHT // 8, MENU_BUTTON_COLOR, MENU_EXTRA_BUTTON_COLOR,
+        #                               "New Game", MENU_EXTRA_BUTTON_COLOR, DIGITS_FONT, 30
+        # )
+
+        self.menu_buttons = [Button(WIDTH // 4, HEIGHT - (HEIGHT - HEIGHT // 2 - self.menu_title.get_height() // 2) // 2 - HORIZONTAL_OFFSET // 2 - HEIGHT // 8 + i * (HEIGHT // 8 + HORIZONTAL_OFFSET), WIDTH // 2,
+                                    HEIGHT // 8, MENU_BUTTON_COLOR, MENU_EXTRA_BUTTON_COLOR,
+                                    MENU_BUTTON_TEXT[i], MENU_EXTRA_BUTTON_COLOR, DIGITS_FONT, 30)
+                             for i in range(2)]
+
+        self.difficulty_buttons = [Button(WIDTH // 4, HEIGHT // 2 + self.menu_title.get_height() // 2 + i * HEIGHT // 9 + (i + 1) * HORIZONTAL_OFFSET,
+                                          WIDTH // 2, HEIGHT // 9, MENU_BUTTON_COLOR, MENU_EXTRA_BUTTON_COLOR,
+                                          DIFFICULTIES[i], MENU_EXTRA_BUTTON_COLOR, DIGITS_FONT, 30)
+                                   for i in range(3)]
+
         self.board = [
             [0, 0, 0, 9, 0, 0, 3, 0, 0],
             [0, 0, 0, 1, 0, 5, 4, 0, 9],
@@ -138,7 +160,7 @@ class SudokuGame:
                 if self.board[i][j]:
                     self.buttons_board[i][j].text = str(self.board[i][j])
 
-        self.solve_button = Button(WIDTH - HORIZONTAL_OFFSET - CELL_WIDTH * 3,
+        self.solve_button = Button(HORIZONTAL_OFFSET,
                                    HEIGHT - VERTICAL_OFFSET + HORIZONTAL_OFFSET,
                                    CELL_WIDTH * 3 + LINE_WIDTH,
                                    VERTICAL_OFFSET - 2 * HORIZONTAL_OFFSET, CLICKED_COLOR,
@@ -146,9 +168,17 @@ class SudokuGame:
                                    DIGITS_FONT, ADDITIONAL_TEXT_FONT_SIZE
         )
 
+        self.exit_button = Button(WIDTH - HORIZONTAL_OFFSET - CELL_WIDTH * 3,
+                                  HEIGHT - VERTICAL_OFFSET + HORIZONTAL_OFFSET,
+                                  CELL_WIDTH * 3 + LINE_WIDTH,
+                                  VERTICAL_OFFSET - 2 * HORIZONTAL_OFFSET, CLICKED_COLOR,
+                                  None, 'Exit', GAME_BG_COLOR,
+                                  DIGITS_FONT, ADDITIONAL_TEXT_FONT_SIZE)
+
         self.additional_text_font = pygame.font.SysFont(DIGITS_FONT, ADDITIONAL_TEXT_FONT_SIZE)
         self.clicked = (-1, -1)
         self.mistakes = 0
+        self.difficulty = None
 
         self.func = {
             0: self.transpose,
@@ -158,48 +188,63 @@ class SudokuGame:
             4: self.swap_vertical_areas
         }
 
-    def create_board(self):
-        self.initialize()
-        for i in range(10):
-            self.func[random.randint(0, 4)]()
+    def create_board(self, difficulty):
+        temp_board = []
+        self.initialize(temp_board)
+        for i in range(20):
+            self.func[random.randint(0, 4)](temp_board)
+        self.correct_board = deepcopy(temp_board)
 
-    def initialize(self):
+        open_cells = BOARD_SIZE * BOARD_SIZE - random.randint(DIFFICULTY_CELLS[difficulty][0], DIFFICULTY_CELLS[difficulty][1])
+        count = 0
+        while count < open_cells and self.solve(deepcopy(temp_board), False):
+            pos = (random.randint(0, BOARD_SIZE - 1), random.randint(0, BOARD_SIZE - 1))
+            if temp_board[pos[0]][pos[1]]:
+                temp_board[pos[0]][pos[1]] = 0
+                count += 1
+        if count == open_cells and self.solve(deepcopy(temp_board), False):
+            self.board = deepcopy(temp_board)
+        else:
+            self.create_board()
+
+    def initialize(self, board):
         for i in range(BOARD_SIZE):
+            board.append([])
             for j in range(BOARD_SIZE):
                 if not i % 3:
-                    self.board[i][j] = (i // 3 + 1 + j)
+                    board[i].append(i // 3 + 1 + j)
                 else:
                     try:
-                        self.board[i][j] = self.board[i - 1][j + 3]
+                        board[i].append(board[i - 1][j + 3])
                     except IndexError:
-                        self.board[i][j] = self.board[i - 1][j - 6]
-                if self.board[i][j] > 9:
-                    self.board[i][j] -= 9
+                        board[i].append(board[i - 1][j - 6])
+                if board[i][j] > 9:
+                    board[i][j] -= 9
 
-    def transpose(self):
-        self.board = list(map(list, zip(*self.board)))
+    def transpose(self, board):
+        board = list(map(list, zip(*board)))
 
-    def swap_rows_in_area(self):
+    def swap_rows_in_area(self, board):
         first, second = self.find_random_lines()
         for j in range(BOARD_SIZE):
-            self.board[first][j], self.board[second][j] = self.board[second][j], self.board[first][j]
+            board[first][j], board[second][j] = board[second][j], board[first][j]
 
-    def swap_cols_in_area(self):
+    def swap_cols_in_area(self, board):
         first, second = self.find_random_lines()
         for i in range(BOARD_SIZE):
-            self.board[i][first], self.board[i][second] = self.board[i][second], self.board[i][first]
+            board[i][first], board[i][second] = board[i][second], board[i][first]
 
-    def swap_horizontal_areas(self):
+    def swap_horizontal_areas(self, board):
         first, second = self.find_random_areas()
         for i in range(3):
             for j in range(BOARD_SIZE):
-                self.board[first * 3 + i][j], self.board[second * 3 + i][j] = self.board[second * 3 + i][j], self.board[first * 3 + i][j]
+                board[first * 3 + i][j], board[second * 3 + i][j] = board[second * 3 + i][j], board[first * 3 + i][j]
 
-    def swap_vertical_areas(self):
+    def swap_vertical_areas(self, board):
         first, second = self.find_random_areas()
         for i in range(BOARD_SIZE):
             for j in range(3):
-                self.board[i][first * 3 + j], self.board[i][second * 3 + j] = self.board[i][second * 3 + j], self.board[i][first * 3 + j]
+                board[i][first * 3 + j], board[i][second * 3 + j] = board[i][second * 3 + j], board[i][first * 3 + j]
 
     def find_random_areas(self):
         first = random.randint(0, 2)
@@ -216,43 +261,48 @@ class SudokuGame:
             second = random.randint(area * 3, area * 3 + 2)
         return (first, second)
 
-    def solve(self):
-        pos = self.find_next()
+    def solve(self, board=None, display=True):
+        if display and board is None:
+            board = self.board
+        pos = self.find_next(board)
         if pos is None:
             return True
         else:
             row, col = pos[0], pos[1]
             for value in range(1, 10):
-                if self.isValid(value, row, col):
-                    self.board[row][col] = value
-                    self.buttons_board[row][col].text = str(value)
-                    self.buttons_board[row][col].draw(self.window)
-                    pygame.display.update()
+                if self.isValid(board, value, row, col):
+                    board[row][col] = value
+                    if display:
+                        self.buttons_board[row][col].text = str(value)
+                        self.buttons_board[row][col].draw(self.window)
+                        pygame.display.update()
+                        if self.solve():
+                            return True
+                    else:
+                        if self.solve(board, False):
+                            return True
 
-                    if self.solve():
-                        return True
-
-                    self.board[row][col] = 0
+                    board[row][col] = 0
 
         return False
 
-    def find_next(self):
+    def find_next(self, board):
         for i in range(BOARD_SIZE):
             for j in range(BOARD_SIZE):
-                if self.board[i][j] == 0:
+                if board[i][j] == 0:
                     return (i, j)
         return None
 
-    def isValid(self, value, row, col):
+    def isValid(self, board, value, row, col):
         for i in range(BOARD_SIZE):
-            if self.board[row][i] == value or self.board[i][col] == value:
+            if board[row][i] == value or board[i][col] == value:
                 return False
 
         left_border = 3 * (row // 3)
         up_border = 3 * (col // 3)
         for i in range(left_border, left_border + 3):
             for j in range(up_border, up_border + 3):
-                if self.board[i][j] == value:
+                if board[i][j] == value:
                     return False
         return True
 
@@ -283,7 +333,13 @@ class SudokuGame:
 
         self.window.blit(self.menu_title, (WIDTH // 2 - self.menu_title.get_width() // 2,
                                            HEIGHT // 2 - self.menu_title.get_height() // 2))
-        self.new_game_button.draw(self.window)
+
+        if self.choosing_diffculty:
+            for button in self.difficulty_buttons:
+                button.draw(self.window)
+        else:
+            for button in self.menu_buttons:
+                button.draw(self.window)
 
         pygame.display.update()
 
@@ -324,23 +380,31 @@ class SudokuGame:
 
         mistakes_text = self.additional_text_font.render(f"Mistakes: {self.mistakes}/{MAX_MISTAKES}",
                                                          0, EXTRA_LINES_COLOR)
-        self.window.blit(mistakes_text, (WIDTH // 2 + CELL_WIDTH, VERTICAL_OFFSET - ADDITIONAL_TEXT_FONT_SIZE))
+        self.window.blit(mistakes_text, (WIDTH - mistakes_text.get_width() - 2 * HORIZONTAL_OFFSET, VERTICAL_OFFSET - ADDITIONAL_TEXT_FONT_SIZE))
+
+        difficulty_text = self.additional_text_font.render(self.difficulty, 0, EXTRA_LINES_COLOR)
+        self.window.blit(difficulty_text, (2 * HORIZONTAL_OFFSET, VERTICAL_OFFSET - ADDITIONAL_TEXT_FONT_SIZE))
 
         self.draw_cells()
-        self.solve_button.draw(self.window)
         self.draw_board()
+
+        self.solve_button.draw(self.window)
+        self.exit_button.draw(self.window)
         pygame.display.update()
 
-    def start_new_game(self):
+    def start_new_game(self, difficulty):
         self.playing = 1
         self.mistakes = 0
         self.clicked = (-1, -1)
-        # self.create_board()
+        self.difficulty = difficulty
+        self.create_board(difficulty)
 
         for i in range(BOARD_SIZE):
             for j in range(BOARD_SIZE):
                 if self.board[i][j]:
                     self.buttons_board[i][j].text = str(self.board[i][j])
+                else:
+                    self.buttons_board[i][j].text = ''
 
     def start(self):
         running = True
@@ -358,22 +422,25 @@ class SudokuGame:
                             for col in range(BOARD_SIZE):
                                 if self.buttons_board[row][col].is_over(pos):
                                     self.change_highlighting((row, col))
-                                    if self.find_next() is None:
+                                    if self.find_next(self.board) is None:
                                         # WON
                                         pass
                         if self.solve_button.is_over(pos):
                             self.solve()
                             self.change_highlighting()
+                        elif self.exit_button.is_over(pos):
+                            self.playing = False
                     elif event.type == pygame.KEYDOWN:
                         if event.key in self.keys_dict:
                             if self.keys_dict[event.key] == self.correct_board[self.clicked[0]][self.clicked[1]]:
                                 self.buttons_board[self.clicked[0]][self.clicked[1]].text = str(self.keys_dict[event.key])
                                 self.buttons_board[self.clicked[0]][self.clicked[1]].text_color = GUESSED_COLOR
                             else:
-                                self.mistakes += 1
-                                if self.mistakes == MAX_MISTAKES:
-                                    # LOSE
-                                    self.playing = False
+                                if not self.board[self.clicked[0]][self.clicked[1]]:
+                                    self.mistakes += 1
+                                    if self.mistakes == MAX_MISTAKES:
+                                        # LOSE
+                                        self.playing = False
                         elif event.key == pygame.K_LEFT and self.clicked[1] > 0:
                             self.change_highlighting((self.clicked[0], self.clicked[1] - 1))
                         elif event.key == pygame.K_RIGHT and -1 < self.clicked[1] < 8:
@@ -382,19 +449,40 @@ class SudokuGame:
                             self.change_highlighting((self.clicked[0] - 1, self.clicked[1]))
                         elif event.key == pygame.K_DOWN and -1 < self.clicked[0] < 8:
                             self.change_highlighting((self.clicked[0] + 1, self.clicked[1]))
+                elif self.choosing_diffculty:
+                    if event.type == pygame.MOUSEMOTION:
+                        for button in self.difficulty_buttons:
+                            if button.is_over(pos) and self.choosing_diffculty:
+                                button.color = OVER_COLOR
+                                button.text_color = EXTRA_OVER_COLOR
+                                button.outline = EXTRA_OVER_COLOR
+                            else:
+                                button.color = MENU_BUTTON_COLOR
+                                button.text_color = MENU_EXTRA_BUTTON_COLOR
+                                button.outline = MENU_EXTRA_BUTTON_COLOR
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        for button in self.difficulty_buttons:
+                            if self.choosing_diffculty and button.is_over(pos):
+                                self.choosing_diffculty = False
+                                self.start_new_game(button.text)
                 else:
                     if event.type == pygame.MOUSEMOTION:
-                        if self.new_game_button.is_over(pos):
-                            self.new_game_button.color = OVER_COLOR
-                            self.new_game_button.text_color = EXTRA_OVER_COLOR
-                            self.new_game_button.outline = EXTRA_OVER_COLOR
-                        else:
-                            self.new_game_button.color = MENU_BUTTON_COLOR
-                            self.new_game_button.text_color = MENU_EXTRA_BUTTON_COLOR
-                            self.new_game_button.outline = MENU_EXTRA_BUTTON_COLOR
+                        for button in self.menu_buttons:
+                            if button.is_over(pos) and not self.choosing_diffculty:
+                                button.color = OVER_COLOR
+                                button.text_color = EXTRA_OVER_COLOR
+                                button.outline = EXTRA_OVER_COLOR
+                            else:
+                                button.color = MENU_BUTTON_COLOR
+                                button.text_color = MENU_EXTRA_BUTTON_COLOR
+                                button.outline = MENU_EXTRA_BUTTON_COLOR
                     if event.type == pygame.MOUSEBUTTONDOWN:
-                        if self.new_game_button.is_over(pos):
-                            self.start_new_game()
+                        for button in self.menu_buttons:
+                            if not self.choosing_diffculty and button.is_over(pos):
+                                if button.text == MENU_BUTTON_TEXT[0]:
+                                    pass
+                                else:
+                                    self.choosing_diffculty = True
 
             if self.playing:
                 self.draw_game_window()
@@ -409,67 +497,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-# def solve(board):
-#     pos = find_next(board)
-#     if pos is None:
-#         return True
-#     else:
-#         row, col = pos[0], pos[1]
-#         for value in range(1, 10):
-#             if isValid(board, value, row, col):
-#                 board[row][col] = value
-
-#                 if solve(board):
-#                     return True
-
-#                 board[row][col] = 0
-
-#     return False
-
-# def find_next(board):
-#     for i in range(9):
-#         for j in range(9):
-#             if board[i][j] == 0:
-#                 return (i, j)
-#     return None
-
-# def isValid(board, value, row, col):
-#     for i in range(9):
-#         if board[row][i] == value or board[i][col] == value:
-#             return False
-
-#     left_border = 3 * (row // 3)
-#     up_border = 3 * (col // 3)
-#     for i in range(left_border, left_border + 3):
-#         for j in range(up_border, up_border + 3):
-#             if board[i][j] == value:
-#                 return False
-#     return True
-
-# def print_board(board):
-#     for i in range(9):
-#         if i and i % 3 == 0:
-#             print('- - - + - - - + - - -')
-#         for j in range(9):
-#             if j and j % 3 == 0:
-#                 print('|', end=' ')
-#             if j == 8:
-#                 print(board[i][j])
-#             else:
-#                 print(board[i][j], end=' ')
-
-# board = [
-#     [0, 0, 0, 9, 0, 0, 3, 0, 0],
-#     [0, 0, 0, 1, 0, 5, 4, 0, 9],
-#     [0, 0, 0, 3, 0, 4, 0, 6, 0],
-#     [9, 0, 5, 8, 2, 0, 0, 0, 0],
-#     [0, 3, 0, 0, 4, 9, 2, 0, 0],
-#     [2, 7, 0, 5, 0, 0, 0, 8, 0],
-#     [7, 0, 0, 0, 0, 0, 0, 3, 0],
-#     [0, 0, 0, 2, 1, 0, 0, 0, 5],
-#     [0, 8, 0, 7, 0, 3, 1, 0, 0]
-# ]
-
-# print_board(board)
