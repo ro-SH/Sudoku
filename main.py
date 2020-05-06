@@ -1,6 +1,8 @@
+import os
 import pygame
 import random
 import time
+import pickle
 from copy import deepcopy
 from tkinter import Tk, messagebox
 
@@ -246,19 +248,14 @@ class SudokuGame:
         return (first, second)
 
     def save_game(self):
-        # Difficulty
-        # Time
-        # Mistakes
-        # Board
-        with open('last_game.txt', 'w') as file:
-            file.write(f"Difficulty: {self.difficulty}\n")
-            file.write(f"Time: {self.format_time(self.current_time)}\n")
-            file.write(f"Mistakes: {self.mistakes}\n")
-            for i in range(BOARD_SIZE):
-                for j in range(BOARD_SIZE):
-                    file.write(f'{self.board[i][j]} ')
-                if not i == 8:
-                    file.write("\n")
+        data = {
+            'difficulty': self.difficulty,
+            'time': self.format_time(self.current_time),
+            'mistakes': self.mistakes,
+            'board': self.board
+        }
+        with open('last_game.pickle', 'wb') as file:
+            pickle.dump(data, file)
 
     def solve(self, board=None, display=True):
         if display and board is None:
@@ -444,28 +441,35 @@ class SudokuGame:
         self.current_time = self.start_time
 
     def isSaved(self):
-        with open('last_game.txt') as file:
-            if not file.readlines():
-                return False
-        return True
+        if os.path.getsize('last_game.pickle') > 0:
+            return True
+        return False
 
     def continue_game(self):
         try:
-            with open("last_game.txt") as file:
-                self.solving = True
-                self.difficulty = file.readline().split()[1]
-                if self.difficulty not in DIFFICULTIES:
+            with open("last_game.pickle", 'rb') as file:
+                data = pickle.load(file)
+            self.solving = True
+            self.difficulty = data['difficulty']
+            if self.difficulty not in DIFFICULTIES:
+                raise ValueError
+            self.current_time = time.time()
+            self.start_time = self.current_time - self.time_from_str(data['time'])
+            self.mistakes = data['mistakes']
+            if self.mistakes > 2:
+                raise ValueError
+            self.board = data['board']
+            if not len(self.board) == BOARD_SIZE:
+                raise ValueError
+            for row in self.board:
+                if not len(row) == BOARD_SIZE:
                     raise ValueError
-                self.current_time = time.time()
-                self.start_time = self.current_time - self.time_from_str(file.readline().split()[1])
-                self.mistakes = int(file.readline().split()[1])
-                if self.mistakes > 2:
-                    raise ValueError
-                for i in range(BOARD_SIZE):
-                    self.board[i] = list(map(int, file.readline().split()))
-                self.fill_buttons()
-                with open("last_game.txt", 'w') as file:
-                    pass
+                for el in row:
+                    if not 0 <= el <= 9:
+                        raise ValueError
+            self.fill_buttons()
+            with open("last_game.pickle", 'wb') as file:
+                pass
         except:
             raise ValueError('Wrong data')
             return False
@@ -473,27 +477,37 @@ class SudokuGame:
 
     def get_highscores(self):
         try:
-            with open('highscores.txt') as file:
-                result = {}
-                for i in range(3):
-                    highscore = file.readline().split()[1]
-                    if highscore == '-':
-                        result[DIFFICULTIES[i]] = None
-                    else:
-                        result[DIFFICULTIES[i]] = self.time_from_str(highscore)
-                return result
+            # with open('highscores.txt') as file:
+            #     result = {}
+            #     for i in range(3):
+            #         highscore = file.readline().split()[1]
+            #         if highscore == '-':
+            #             result[DIFFICULTIES[i]] = None
+            #         else:
+            #             result[DIFFICULTIES[i]] = self.time_from_str(highscore)
+            #     return result
+            with open('highscores.pickle', 'rb') as file:
+                data = pickle.load(file)
+            if not len(data) == 3:
+                raise ValueError
+            for difficulty, time in data.items():
+                if difficulty not in DIFFICULTIES:
+                    raise ValueError
+            return data
         except:
             raise ValueError('Wrong data')
 
     def update_highscores(self):
-        with open('highscores.txt', 'w') as file:
-            for difficulty, time in self.highscores.items():
-                file.write(f'{difficulty}: ')
-                if time is None:
-                    file.write('-')
-                else:
-                    file.write(self.format_time(time))
-                file.write('\n')
+        # with open('highscores.txt', 'w') as file:
+        #     for difficulty, time in self.highscores.items():
+        #         file.write(f'{difficulty}: ')
+        #         if time is None:
+        #             file.write('-')
+        #         else:
+        #             file.write(self.format_time(time))
+        #         file.write('\n')
+        with open('highscores.pickle', 'wb') as file:
+            pickle.dump(self.highscores, file)
 
     def start(self):
         running = True
@@ -542,8 +556,11 @@ class SudokuGame:
                                 if not self.board[self.clicked[0]][self.clicked[1]]:
                                     self.mistakes += 1
                                     if self.mistakes == MAX_MISTAKES:
-                                        # LOSE
+                                        Tk().wm_withdraw()
+                                        result = messagebox.askyesno('Loss', f'You\'ve lost\nWould you like to play again?')
                                         self.playing = False
+                                        if result:
+                                            self.choosing_diffculty = True
                         elif event.key == pygame.K_LEFT and self.clicked[1] > 0:
                             self.change_highlighting((self.clicked[0], self.clicked[1] - 1))
                         elif event.key == pygame.K_RIGHT and -1 < self.clicked[1] < 8:
