@@ -2,6 +2,7 @@ import pygame
 import random
 import time
 from copy import deepcopy
+from tkinter import Tk, messagebox
 
 WIDTH = 435
 HEIGHT = 595
@@ -52,7 +53,8 @@ DIFFICULTY_CELLS = {
 
 class Button:
 
-    def __init__(self, x, y, width, height, color, outline=None, text='', text_color=DIGITS_COLOR, font=DIGITS_FONT, font_size=DIGITS_FONT_SIZE):
+    def __init__(self, x, y, width, height, color, outline=None, text='', text_color=DIGITS_COLOR,
+                 font=DIGITS_FONT, font_size=DIGITS_FONT_SIZE):
         self.x = x
         self.y = y
         self.width = width
@@ -73,7 +75,8 @@ class Button:
         if self.text:
             font = pygame.font.SysFont(self.font, self.font_size)
             text = font.render(self.text, 1, self.text_color)
-            win.blit(text, (self.x + self.width // 2 - text.get_width() // 2, self.y + self.height // 2 - text.get_height() // 2))
+            win.blit(text, (self.x + self.width // 2 - text.get_width() // 2,
+                            self.y + self.height // 2 - text.get_height() // 2))
 
     def is_over(self, pos):
         if self.x <= pos[0] <= self.x + self.width:
@@ -109,8 +112,11 @@ class SudokuGame:
 
         self.menu_title_font = pygame.font.SysFont(TITLE_FONT, 50)
         self.menu_title = self.menu_title_font.render("Sudoku Game", 1, TITLE_COLOR)
+        self.play_title_font = pygame.font.SysFont(TITLE_FONT, 40)
+        self.play_title = self.play_title_font.render("Sudoku Game", 1, TITLE_COLOR)
 
         self.playing = False
+        self.solving = True
         self.choosing_diffculty = False
 
         self.menu_buttons = [Button(WIDTH // 4, HEIGHT - (HEIGHT - HEIGHT // 2 - self.menu_title.get_height() // 2) // 2 - HORIZONTAL_OFFSET // 2 - HEIGHT // 8 + i * (HEIGHT // 8 + HORIZONTAL_OFFSET), WIDTH // 2,
@@ -134,11 +140,6 @@ class SudokuGame:
                               for i in range(BOARD_SIZE)
         ]
 
-        for i in range(BOARD_SIZE):
-            for j in range(BOARD_SIZE):
-                if self.board[i][j]:
-                    self.buttons_board[i][j].text = str(self.board[i][j])
-
         self.solve_button = Button(HORIZONTAL_OFFSET,
                                    HEIGHT - VERTICAL_OFFSET + HORIZONTAL_OFFSET,
                                    CELL_WIDTH * 3 + LINE_WIDTH,
@@ -160,6 +161,7 @@ class SudokuGame:
         self.difficulty = None
         self.start_time = None
         self.current_time = None
+        self.highscores = self.get_highscores()
 
         self.func = {
             0: self.transpose,
@@ -172,7 +174,7 @@ class SudokuGame:
     def create_board(self, difficulty):
         temp_board = []
         self.initialize(temp_board)
-        for i in range(20):
+        for i in range(35):
             self.func[random.randint(0, 4)](temp_board)
         self.correct_board = deepcopy(temp_board)
 
@@ -250,11 +252,11 @@ class SudokuGame:
         # Board
         with open('last_game.txt', 'w') as file:
             file.write(f"Difficulty: {self.difficulty}\n")
-            file.write(f"Time: {self.format_time()}\n")
+            file.write(f"Time: {self.format_time(self.current_time)}\n")
             file.write(f"Mistakes: {self.mistakes}\n")
             for i in range(BOARD_SIZE):
                 for j in range(BOARD_SIZE):
-                    file.write(str(self.board[i][j] + " "))
+                    file.write(f'{self.board[i][j]} ')
                 if not i == 8:
                     file.write("\n")
 
@@ -272,7 +274,7 @@ class SudokuGame:
                     if display:
                         self.buttons_board[row][col].text = str(value)
                         self.buttons_board[row][col].draw(self.window)
-                        pygame.time.delay(20)
+                        # pygame.time.delay(20)
                         pygame.display.update()
                         if self.solve():
                             return True
@@ -335,9 +337,19 @@ class SudokuGame:
         if self.choosing_diffculty:
             for button in self.difficulty_buttons:
                 button.draw(self.window)
+            for difficulty, time in self.highscores.items():
+                for button in self.difficulty_buttons:
+                    if button.text == difficulty:
+                        if time is None:
+                            text = self.additional_text_font.render("No highscore yet", 1, EXTRA_LINES_COLOR)
+                        else:
+                            text = self.additional_text_font.render(self.format_time(time), 1, EXTRA_LINES_COLOR)
+                        self.window.blit(text, ((2 * button.x + button.width) // 2 - text.get_width() // 2, button.y + button.height * 2 // 3))
+
         else:
             for button in self.menu_buttons:
-                button.draw(self.window)
+                if not (button.text == MENU_BUTTON_TEXT[0] and not self.isSaved()):
+                    button.draw(self.window)
 
         pygame.display.update()
 
@@ -376,6 +388,9 @@ class SudokuGame:
     def draw_game_window(self):
         self.window.fill(GAME_BG_COLOR)
 
+        self.window.blit(self.play_title, (WIDTH // 2 - self.play_title.get_width() // 2,
+                                           VERTICAL_OFFSET // 2 - self.play_title.get_height() // 2))
+
         mistakes_text = self.additional_text_font.render(f"Mistakes: {self.mistakes}/{MAX_MISTAKES}",
                                                          0, EXTRA_LINES_COLOR)
         self.window.blit(mistakes_text, (WIDTH - mistakes_text.get_width() - 2 * HORIZONTAL_OFFSET, VERTICAL_OFFSET - ADDITIONAL_TEXT_FONT_SIZE))
@@ -383,7 +398,7 @@ class SudokuGame:
         difficulty_text = self.additional_text_font.render(self.difficulty, 0, EXTRA_LINES_COLOR)
         self.window.blit(difficulty_text, (2 * HORIZONTAL_OFFSET, VERTICAL_OFFSET - ADDITIONAL_TEXT_FONT_SIZE))
 
-        time_text = self.additional_text_font.render(self.format_time(), 0 , EXTRA_LINES_COLOR)
+        time_text = self.additional_text_font.render(self.format_time(self.current_time), 0 , EXTRA_LINES_COLOR)
         self.window.blit(time_text, (WIDTH // 2 - time_text.get_width() // 2, VERTICAL_OFFSET - ADDITIONAL_TEXT_FONT_SIZE))
 
         self.draw_cells()
@@ -393,9 +408,9 @@ class SudokuGame:
         self.exit_button.draw(self.window)
         pygame.display.update()
 
-    def format_time(self):
-        secs = self.current_time % 60
-        mins = self.current_time // 60
+    def format_time(self, time):
+        secs = time % 60
+        mins = time // 60
         result = f"{mins}:{secs}"
         if mins < 10:
             result = "0"+result
@@ -403,13 +418,11 @@ class SudokuGame:
             result = result[:-1] + "0" + result[-1]
         return result
 
-    def start_new_game(self, difficulty):
-        self.playing = 1
-        self.mistakes = 0
-        self.clicked = (-1, -1)
-        self.difficulty = difficulty
-        self.create_board(difficulty)
+    def time_from_str(self, time_str):
+        time = list(map(int, time_str.split(':')))
+        return time[0] * 60 + time[1]
 
+    def fill_buttons(self):
         for i in range(BOARD_SIZE):
             for j in range(BOARD_SIZE):
                 if self.board[i][j]:
@@ -417,26 +430,70 @@ class SudokuGame:
                 else:
                     self.buttons_board[i][j].text = ''
 
-        self.time = time.time()
-        self.current_time = self.time
+    def start_new_game(self, difficulty):
+        self.solving = True
+        self.playing = True
+        self.mistakes = 0
+        self.clicked = (-1, -1)
+        self.difficulty = difficulty
+        self.create_board(difficulty)
+
+        self.fill_buttons()
+
+        self.start_time = time.time()
+        self.current_time = self.start_time
+
+    def isSaved(self):
+        with open('last_game.txt') as file:
+            if not file.readlines():
+                return False
+        return True
 
     def continue_game(self):
         try:
             with open("last_game.txt") as file:
+                self.solving = True
                 self.difficulty = file.readline().split()[1]
                 if self.difficulty not in DIFFICULTIES:
                     raise ValueError
-                self.time = sum(map(int, file.readline().split(":")))
+                self.current_time = time.time()
+                self.start_time = self.current_time - self.time_from_str(file.readline().split()[1])
                 self.mistakes = int(file.readline().split()[1])
                 if self.mistakes > 2:
                     raise ValueError
                 for i in range(BOARD_SIZE):
-                    self.board[i] = file.readline.split()
+                    self.board[i] = list(map(int, file.readline().split()))
+                self.fill_buttons()
+                with open("last_game.txt", 'w') as file:
+                    pass
         except:
-            raise ValueError
-        with open("last_game.txt") as file:
-            pass
+            raise ValueError('Wrong data')
+            return False
         return True
+
+    def get_highscores(self):
+        try:
+            with open('highscores.txt') as file:
+                result = {}
+                for i in range(3):
+                    highscore = file.readline().split()[1]
+                    if highscore == '-':
+                        result[DIFFICULTIES[i]] = None
+                    else:
+                        result[DIFFICULTIES[i]] = self.time_from_str(highscore)
+                return result
+        except:
+            raise ValueError('Wrong data')
+
+    def update_highscores(self):
+        with open('highscores.txt', 'w') as file:
+            for difficulty, time in self.highscores.items():
+                file.write(f'{difficulty}: ')
+                if time is None:
+                    file.write('-')
+                else:
+                    file.write(self.format_time(time))
+                file.write('\n')
 
     def start(self):
         running = True
@@ -444,9 +501,11 @@ class SudokuGame:
         while running:
             pos = pygame.mouse.get_pos()
             if self.playing and self.find_next(self.board):
-                self.current_time = round(time.time() - self.time)
+                self.current_time = round(time.time() - self.start_time)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
+                    if self.playing and self.find_next(self.board) is not None:
+                        self.save_game()
                     running = False
                     break
 
@@ -456,20 +515,29 @@ class SudokuGame:
                             for col in range(BOARD_SIZE):
                                 if self.buttons_board[row][col].is_over(pos):
                                     self.change_highlighting((row, col))
-                                    if self.find_next(self.board) is None:
-                                        # WON
-                                        pass
                         if self.solve_button.is_over(pos):
                             self.solve()
+                            self.solving = False
                             self.change_highlighting()
                         elif self.exit_button.is_over(pos):
-                            self.save_game()
+                            if self.find_next(self.board) is not None:
+                                self.save_game()
                             self.playing = False
                     elif event.type == pygame.KEYDOWN:
                         if event.key in self.keys_dict:
                             if self.keys_dict[event.key] == self.correct_board[self.clicked[0]][self.clicked[1]]:
+                                self.board[self.clicked[0]][self.clicked[1]] = self.keys_dict[event.key]
                                 self.buttons_board[self.clicked[0]][self.clicked[1]].text = str(self.keys_dict[event.key])
                                 self.buttons_board[self.clicked[0]][self.clicked[1]].text_color = GUESSED_COLOR
+                                if self.find_next(self.board) is None and self.solving:
+                                    if self.highscores[self.difficulty] is None or self.current_time < self.highscores[self.difficulty]:
+                                        self.highscores[self.difficulty] = self.current_time
+                                        self.update_highscores()
+                                    Tk().wm_withdraw()
+                                    result = messagebox.askyesno('Victory', f'You\'ve won on {self.difficulty} difficulty in {self.format_time(self.current_time)}.\nWould you like to play again?')
+                                    self.playing = False
+                                    if result:
+                                        self.choosing_diffculty = True
                             else:
                                 if not self.board[self.clicked[0]][self.clicked[1]]:
                                     self.mistakes += 1
@@ -514,11 +582,11 @@ class SudokuGame:
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         for button in self.menu_buttons:
                             if not self.choosing_diffculty and button.is_over(pos):
-                                if button.text == MENU_BUTTON_TEXT[0]:
-                                    # self.continue_game()
-                                    # self.playing = True
+                                if button.text == MENU_BUTTON_TEXT[0] and self.isSaved():
+                                    self.continue_game()
+                                    self.playing = True
                                     pass
-                                else:
+                                elif button.text == MENU_BUTTON_TEXT[1]:
                                     self.choosing_diffculty = True
 
             if self.playing:
